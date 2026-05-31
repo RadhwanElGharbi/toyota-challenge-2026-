@@ -79,6 +79,7 @@ SERIAL_RETRY_COUNTS = {
     "pause": 5,
     "stop": 5,
     "resume": 3,
+    "toggle_gripper": 1,
 }
 SERIAL_RETRY_DELAY_S = 0.03
 
@@ -142,6 +143,21 @@ def encode_payload_for_serial(payload: dict) -> str:
         return "R\n"
     if msg_type == "stop":
         return "S\n"
+    if msg_type == "toggle_gripper":
+        return "G\n"
+    if msg_type == "path_assignment":
+        path_id = int(payload.get("path_id", 0))
+        parts = [f"W{path_id}"]
+        for wp in payload.get("waypoints", []):
+            x = int(round(float(wp.get("x_cm", 0))))
+            y = int(round(float(wp.get("y_cm", 0))))
+            parts.append(f"{x},{y}")
+        return ",".join(parts) + "\n"
+    if msg_type == "calibrate":
+        x = int(round(float(payload.get("x_cm", 0))))
+        y = int(round(float(payload.get("y_cm", 0))))
+        t = int(round(float(payload.get("theta_deg", 90))))
+        return f"C{x},{y},{t}\n"
 
     compact_payload = compact_payload_for_serial(payload)
     return json.dumps(compact_payload, separators=(",", ":")) + "\n"
@@ -152,11 +168,6 @@ def send_json_line_over_transport(transport: RobotTransport, payload: dict) -> N
     retry_count = SERIAL_RETRY_COUNTS.get(payload.get("type"), 3)
 
     with serial_write_lock:
-        # For large JSON Commands, stop Robot Telemetry Data from Coming in
-        if payload.get("type") == "path_assignment":
-            transport.write("S\n")                      # Stop the Robot
-            time.sleep(0.8)                             # Delay for Buffer
-
         for attempt in range(retry_count):
             transport.write(message)
             if attempt + 1 < retry_count:

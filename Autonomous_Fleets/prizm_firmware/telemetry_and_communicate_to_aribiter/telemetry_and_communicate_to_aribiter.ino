@@ -1,4 +1,5 @@
 #include <PRIZM.h>
+#include <Wire.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -46,24 +47,15 @@ int waypoint_count = 0;
 // ==============================
 // Motion / execution state
 // ==============================
-enum PrimitiveType
-{
-  PRIM_NONE,
-  PRIM_TURN,
-  PRIM_DRIVE
-};
-
-PrimitiveType active_primitive = PRIM_NONE;
+bool path_running = false;
 bool path_loaded = false;
 bool path_paused = false;
 bool path_started_sent = false;
 bool gripper_closed = false;
+bool prizm_ready = false;
 
-const float POSITION_TOLERANCE_CM = 2.0;
-const float HEADING_TOLERANCE_DEG = 4.0;
-
-int turn_speed_deg_per_sec = 150;
-int drive_speed_deg_per_sec = 200;
+const float POSITION_TOLERANCE_CM = 3.0;
+int motor_speed = 180;
 
 // ==============================
 // Serial receive buffer
@@ -78,9 +70,28 @@ uint8_t serialLineLength = 0;
 unsigned long lastTelemetrySendMs = 0;
 const unsigned long TELEMETRY_PERIOD_MS = 250;
 unsigned long lastSensorReadMs = 0;
+
+// Speed tracking
+unsigned long lastSpeedCalcMs = 0;
+long lastSpeedLeftDeg = 0;
+long lastSpeedRightDeg = 0;
+float speed_cm_s = 0.0;
+bool motor1_busy = false;
+bool motor2_busy = false;
+bool stall_detected = false;
+unsigned long stallCheckStartMs = 0;
+const unsigned long STALL_THRESHOLD_MS = 500;
+
+// Telemetry suppression after S opcode (to let path JSON through)
+unsigned long telemetrySuppressUntilMs = 0;
 const unsigned long SENSOR_READ_PERIOD_MS = 500;
 int cached_left_ultrasonic_cm = -1;
 int cached_front_ultrasonic_cm = -1;
+float cached_battery_voltage = 0.0;
+int cached_motor1_current_ma = 0;
+int cached_motor2_current_ma = 0;
+int cached_servo1_position = 0;
+int cached_servo2_position = 0;
 
 // ==============================
 // Helpers
@@ -123,7 +134,7 @@ void setRobotState(const char *new_state)
 
 void resetEncoderTracking()
 {
-  prizm.resetEncoders();
+  if (prizm_ready) prizm.resetEncoders();
   prevLeftDeg = 0;
   prevRightDeg = 0;
 }
@@ -178,6 +189,7 @@ void updatePoseFromEncoders(long leftDeg, long rightDeg)
 
 void updateOdometry()
 {
+  if (!prizm_ready) return;
   long leftDeg = prizm.readEncoderDegrees(2);  // motor 2 = left wheel
   long rightDeg = prizm.readEncoderDegrees(1); // motor 1 = right wheel
   updatePoseFromEncoders(leftDeg, rightDeg);
@@ -195,9 +207,49 @@ void maybeUpdateSensors()
   if (Serial.available() > 0)
     return;
 
+  if (!prizm_ready) return;
   cached_left_ultrasonic_cm = prizm.readSonicSensorCM(2);
   cached_front_ultrasonic_cm = prizm.readSonicSensorCM(4);
+  cached_battery_voltage = prizm.readBatteryVoltage();
+  cached_motor1_current_ma = prizm.readMotorCurrent(1);
+  cached_motor2_current_ma = prizm.readMotorCurrent(2);
+  cached_servo1_position = prizm.readServoPosition(1);
+  cached_servo2_position = prizm.readServoPosition(2);
   lastSensorReadMs = now;
+}
+
+void updateSpeedAndStall()
+{
+  if (!prizm_ready) return;
+  unsigned long now = millis();
+  unsigned long dt = now - lastSpeedCalcMs;
+  if (dt < 200) return;
+
+  long leftDeg = prizm.readEncoderDegrees(2);
+  long rightDeg = prizm.readEncoderDegrees(1);
+
+  float dLeft = (float)(leftDeg - lastSpeedLeftDeg) / 360.0 * WHEEL_CIRCUMFERENCE_CM;
+  float dRight = (float)(rightDeg - lastSpeedRightDeg) / 360.0 * WHEEL_CIRCUMFERENCE_CM;
+  float dCenter = (dLeft + dRight) / 2.0;
+  speed_cm_s = fabs(dCenter) / ((float)dt / 1000.0);
+
+  motor1_busy = (prizm.readMotorBusy(1) == 1);
+  motor2_busy = (prizm.readMotorBusy(2) == 1);
+
+  bool motors_commanded = path_running;
+  bool encoders_frozen = (leftDeg == lastSpeedLeftDeg && rightDeg == lastSpeedRightDeg);
+
+  if (motors_commanded && encoders_frozen && (motor1_busy || motor2_busy)) {
+    if (stallCheckStartMs == 0) stallCheckStartMs = now;
+    stall_detected = (now - stallCheckStartMs > STALL_THRESHOLD_MS);
+  } else {
+    stallCheckStartMs = 0;
+    stall_detected = false;
+  }
+
+  lastSpeedLeftDeg = leftDeg;
+  lastSpeedRightDeg = rightDeg;
+  lastSpeedCalcMs = now;
 }
 
 void printPoseJSON()
@@ -239,12 +291,43 @@ void printPoseJSON()
   Serial.print(F(",\"left_ultrasonic_cm\":"));
   Serial.print(cached_left_ultrasonic_cm);
 
+  Serial.print(F(",\"gripper_closed\":"));
+  Serial.print(gripper_closed ? F("true") : F("false"));
+
+  Serial.print(F(",\"speed_cm_s\":"));
+  Serial.print(speed_cm_s, 1);
+
+  Serial.print(F(",\"motor1_busy\":"));
+  Serial.print(motor1_busy ? F("true") : F("false"));
+
+  Serial.print(F(",\"motor2_busy\":"));
+  Serial.print(motor2_busy ? F("true") : F("false"));
+
+  Serial.print(F(",\"stall\":"));
+  Serial.print(stall_detected ? F("true") : F("false"));
+
+  Serial.print(F(",\"battery_v\":"));
+  Serial.print(cached_battery_voltage / 100.0, 2);
+
+  Serial.print(F(",\"motor1_current_ma\":"));
+  Serial.print(cached_motor1_current_ma);
+
+  Serial.print(F(",\"motor2_current_ma\":"));
+  Serial.print(cached_motor2_current_ma);
+
+  Serial.print(F(",\"servo1_pos\":"));
+  Serial.print(cached_servo1_position);
+
+  Serial.print(F(",\"servo2_pos\":"));
+  Serial.print(cached_servo2_position);
+
   Serial.println(F("}"));
 }
 
 void maybeSendTelemetry()
 {
   unsigned long now = millis();
+  if (now < telemetrySuppressUntilMs) return;
   if (now - lastTelemetrySendMs >= TELEMETRY_PERIOD_MS)
   {
     printPoseJSON();
@@ -257,60 +340,88 @@ void maybeSendTelemetry()
 // ==============================
 void stopMotorsNow()
 {
-  // Explicitly zero any in-flight motor-degree command before cutting power.
-  prizm.setMotorDegrees(0, 0, 0, 0);
-  prizm.setMotorPower(1, 0);
-  prizm.setMotorPower(2, 0);
-  active_primitive = PRIM_NONE;
+  if (prizm_ready) {
+    prizm.setMotorDegrees(0, 0, 0, 0);
+    prizm.setMotorPower(1, 0);
+    prizm.setMotorPower(2, 0);
+  }
+  path_running = false;
 }
 
 void interruptActivePrimitive()
 {
-  if (active_primitive != PRIM_NONE)
-  {
-    updateOdometry();
-  }
-
+  updateOdometry();
   stopMotorsNow();
   resetEncoderTracking();
 }
 
-void startDriveStraight(float distance_cm)
-{
-  int motor_deg = cmToMotorDegrees(distance_cm);
-
-  resetEncoderTracking();
-  prizm.setMotorDegrees(drive_speed_deg_per_sec, motor_deg,
-                        drive_speed_deg_per_sec, -motor_deg);
-
-  active_primitive = PRIM_DRIVE;
-  setRobotState("executing_path");
-}
-
-void startTurnInPlace(float robot_turn_deg)
-{
-  int motor_deg = robotTurnDegToMotorDegrees(fabs(robot_turn_deg));
-
-  resetEncoderTracking();
-
-  if (robot_turn_deg > 0)
-  {
-    prizm.setMotorDegrees(turn_speed_deg_per_sec, motor_deg,
-                          turn_speed_deg_per_sec, motor_deg);
-  }
-  else
-  {
-    prizm.setMotorDegrees(turn_speed_deg_per_sec, -motor_deg,
-                          turn_speed_deg_per_sec, -motor_deg);
-  }
-
-  active_primitive = PRIM_TURN;
-  setRobotState("executing_path");
-}
-
 bool motorsBusy()
 {
+  if (!prizm_ready) return false;
   return (prizm.readMotorBusy(1) == 1 || prizm.readMotorBusy(2) == 1);
+}
+
+void startArcToward(float target_x, float target_y, float max_dist)
+{
+  float dx = target_x - x_cm;
+  float dy = target_y - y_cm;
+  float dist = sqrt(dx * dx + dy * dy);
+  float target_heading = atan2(dy, dx);
+  float heading_err = normalizeAngle(target_heading - theta_rad);
+
+  // Limit segment length
+  float seg_dist = min(dist, max_dist);
+
+  float left_cm, right_cm;
+
+  if (fabs(heading_err) < 0.02) {
+    // Nearly straight — equal wheels
+    left_cm = seg_dist;
+    right_cm = seg_dist;
+  } else {
+    // Arc geometry: R = dist / (2 * sin(heading_err / 2))
+    float R = seg_dist / (2.0 * sin(fabs(heading_err) / 2.0));
+    float arc_angle = seg_dist / R;
+
+    float inner = arc_angle * (R - WHEEL_BASE_CM / 2.0);
+    float outer = arc_angle * (R + WHEEL_BASE_CM / 2.0);
+
+    if (heading_err > 0) {
+      // Turn left: left wheel inner (shorter), right wheel outer
+      left_cm = inner;
+      right_cm = outer;
+    } else {
+      // Turn right: right wheel inner (shorter), left wheel outer
+      left_cm = outer;
+      right_cm = inner;
+    }
+  }
+
+  int left_deg = cmToMotorDegrees(left_cm);
+  int right_deg = cmToMotorDegrees(right_cm);
+
+  // Scale speeds so both motors finish at the same time
+  int left_speed = motor_speed;
+  int right_speed = motor_speed;
+  int abs_left = abs(left_deg);
+  int abs_right = abs(right_deg);
+  if (abs_left > abs_right && abs_left > 0)
+    right_speed = (int)((long)motor_speed * abs_right / abs_left);
+  else if (abs_right > abs_left && abs_right > 0)
+    left_speed = (int)((long)motor_speed * abs_left / abs_right);
+
+  // Minimum speed so wheels don't stall
+  if (left_speed < 20) left_speed = 20;
+  if (right_speed < 20) right_speed = 20;
+
+  resetEncoderTracking();
+  if (prizm_ready) {
+    // Motor 1 = right (positive = forward), Motor 2 = left (negative = forward)
+    prizm.setMotorDegrees(right_speed, right_deg,
+                          left_speed, -left_deg);
+  }
+  path_running = true;
+  setRobotState("executing_path");
 }
 
 // ==============================
@@ -457,7 +568,7 @@ void clearCurrentPath()
   current_path_id = -1;
   path_loaded = false;
   path_started_sent = false;
-  active_primitive = PRIM_NONE;
+  path_running = false;
 }
 
 void sendAck(const char *forType)
@@ -558,15 +669,13 @@ void handlePathAssignment(const char *json)
   int newPathId = -1;
   extractIntField(json, "path_id", newPathId);
 
-  int newTurnSpeed = turn_speed_deg_per_sec;
-  int newDriveSpeed = drive_speed_deg_per_sec;
-  extractIntField(json, "turn_speed_deg_per_sec", newTurnSpeed);
-  extractIntField(json, "drive_speed_deg_per_sec", newDriveSpeed);
+  int newSpeed = motor_speed;
+  extractIntField(json, "drive_speed_deg_per_sec", newSpeed);
 
   bool replaceExisting = true;
   extractBoolField(json, "replace_existing", replaceExisting);
 
-  if (!replaceExisting && (path_loaded || active_primitive != PRIM_NONE))
+  if (!replaceExisting && (path_loaded || path_running))
   {
     sendStatus("blocked", "path_rejected_busy");
     return;
@@ -579,7 +688,7 @@ void handlePathAssignment(const char *json)
     return;
   }
 
-  if (replaceExisting && (path_loaded || active_primitive != PRIM_NONE))
+  if (replaceExisting && (path_loaded || path_running))
   {
     interruptActivePrimitive();
   }
@@ -587,13 +696,12 @@ void handlePathAssignment(const char *json)
   waypoint_count = newWaypointCount;
   current_path_id = newPathId;
   current_waypoint_index = 0;
-  turn_speed_deg_per_sec = newTurnSpeed;
-  drive_speed_deg_per_sec = newDriveSpeed;
+  motor_speed = newSpeed;
 
   path_loaded = true;
   path_paused = false;
   path_started_sent = false;
-  active_primitive = PRIM_NONE;
+  path_running = false;
   setRobotState("idle");
 
   sendAck("path_assignment");
@@ -603,7 +711,7 @@ void handlePathAssignment(const char *json)
 
 void performPause()
 {
-  if (path_loaded || active_primitive != PRIM_NONE)
+  if (path_loaded || path_running)
   {
     interruptActivePrimitive();
   }
@@ -655,13 +763,15 @@ void performStop()
 void performToggleGripper()
 {
   gripper_closed = !gripper_closed;
-  if (gripper_closed)
-  {
-    prizm.setServoPosition(GRIPPER_SERVO_ID, GRIPPER_CLOSED_DEG);
-  }
-  else
-  {
-    prizm.setServoPosition(GRIPPER_SERVO_ID, GRIPPER_OPEN_DEG);
+  if (prizm_ready) {
+    if (gripper_closed)
+    {
+      prizm.setServoPosition(GRIPPER_SERVO_ID, GRIPPER_CLOSED_DEG);
+    }
+    else
+    {
+      prizm.setServoPosition(GRIPPER_SERVO_ID, GRIPPER_OPEN_DEG);
+    }
   }
 
   sendAck("toggle_gripper");
@@ -682,6 +792,124 @@ void handleToggleGripper(const char *json)
   performToggleGripper();
 }
 
+void handleCalibrate(const char *json)
+{
+  if (!jsonTargetsThisRobot(json))
+    return;
+
+  float newX = x_cm;
+  float newY = y_cm;
+  float newTheta = theta_rad;
+
+  const char *px = strstr(json, "\"x_cm\":");
+  if (px) newX = atof(px + 7);
+
+  const char *py = strstr(json, "\"y_cm\":");
+  if (py) newY = atof(py + 7);
+
+  const char *pt = strstr(json, "\"theta_deg\":");
+  if (pt) newTheta = atof(pt + 12) * PI / 180.0;
+
+  x_cm = newX;
+  y_cm = newY;
+  theta_rad = newTheta;
+
+  prevLeftDeg = prizm.readEncoderDegrees(1);
+  prevRightDeg = prizm.readEncoderDegrees(2);
+
+  Serial.print(F("{\"type\":\"ack\",\"for\":\"calibrate\",\"robot_id\":\""));
+  Serial.print(ROBOT_ID);
+  Serial.print(F("\",\"x_cm\":"));
+  Serial.print(x_cm, 1);
+  Serial.print(F(",\"y_cm\":"));
+  Serial.print(y_cm, 1);
+  Serial.print(F(",\"theta_deg\":"));
+  Serial.print(theta_rad * 180.0 / PI, 1);
+  Serial.println(F("}"));
+}
+
+void handleCompactCalibrate(const char *line)
+{
+  // Format: C<x>,<y>,<theta_deg>
+  const char *p = line + 1;
+  char *end;
+  float newX = strtod(p, &end);
+  if (end == p || *end != ',') return;
+  p = end + 1;
+  float newY = strtod(p, &end);
+  if (end == p || *end != ',') return;
+  p = end + 1;
+  float newTheta = strtod(p, &end);
+  if (end == p) return;
+
+  x_cm = newX;
+  y_cm = newY;
+  theta_rad = newTheta * PI / 180.0;
+  resetEncoderTracking();
+
+  Serial.print(F("{\"type\":\"ack\",\"for\":\"calibrate\",\"robot_id\":\""));
+  Serial.print(ROBOT_ID);
+  Serial.print(F("\",\"x_cm\":"));
+  Serial.print(x_cm, 1);
+  Serial.print(F(",\"y_cm\":"));
+  Serial.print(y_cm, 1);
+  Serial.print(F(",\"theta_deg\":"));
+  Serial.print(radToDeg(theta_rad), 1);
+  Serial.println(F("}"));
+  printPoseJSON();
+}
+
+void handleCompactPath(const char *line)
+{
+  // Format: W<pathId>,<x1>,<y1>[,<x2>,<y2>,...]\n
+  const char *p = line + 1; // skip 'W'
+  char *end;
+  int pathId = (int)strtol(p, &end, 10);
+  if (end == p || *end != ',') {
+    sendStatus("error", "bad_compact_path");
+    return;
+  }
+  p = end + 1;
+
+  int count = 0;
+  while (count < MAX_WAYPOINTS) {
+    int16_t wx = (int16_t)strtol(p, &end, 10);
+    if (end == p) break;
+    p = end;
+    if (*p == ',') p++;
+    int16_t wy = (int16_t)strtol(p, &end, 10);
+    if (end == p) break;
+    waypoint_xs[count] = wx;
+    waypoint_ys[count] = wy;
+    count++;
+    p = end;
+    if (*p == ',') p++;
+    else break;
+  }
+
+  if (count <= 0) {
+    sendStatus("error", "bad_compact_path");
+    return;
+  }
+
+  if (path_loaded || path_running) {
+    interruptActivePrimitive();
+  }
+
+  waypoint_count = count;
+  current_path_id = pathId;
+  current_waypoint_index = 0;
+  path_loaded = true;
+  path_paused = false;
+  path_started_sent = false;
+  path_running = false;
+  setRobotState("idle");
+
+  sendAck("path_assignment");
+  sendStatus("idle", "path_loaded");
+  printPoseJSON();
+}
+
 void handleControlOpcode(char opcode)
 {
   if (opcode == 'P')
@@ -695,6 +923,12 @@ void handleControlOpcode(char opcode)
   else if (opcode == 'S')
   {
     performStop();
+    telemetrySuppressUntilMs = millis() + 2000;
+    Serial.flush();
+  }
+  else if (opcode == 'G')
+  {
+    performToggleGripper();
   }
 }
 
@@ -720,6 +954,10 @@ void handleIncomingJson(const char *json)
   {
     handleToggleGripper(json);
   }
+  else if (jsonHasType(json, "calibrate"))
+  {
+    handleCalibrate(json);
+  }
 }
 
 void readSerialCommands()
@@ -741,12 +979,31 @@ void readSerialCommands()
         if (serialLineLength == 1 &&
             (serialLineBuffer[0] == 'P' ||
              serialLineBuffer[0] == 'R' ||
-             serialLineBuffer[0] == 'S'))
+             serialLineBuffer[0] == 'S' ||
+             serialLineBuffer[0] == 'G'))
         {
           handleControlOpcode(serialLineBuffer[0]);
         }
+        else if (serialLineBuffer[0] == 'W')
+        {
+          handleCompactPath(serialLineBuffer);
+        }
+        else if (serialLineBuffer[0] == 'C')
+        {
+          handleCompactCalibrate(serialLineBuffer);
+        }
         else
         {
+          Serial.print(F("{\"type\":\"debug\",\"rx_len\":"));
+          Serial.print(serialLineLength);
+          Serial.print(F(",\"rx\":\""));
+          // print first 60 chars to avoid flooding
+          for (uint8_t i = 0; i < serialLineLength && i < 60; i++) {
+            char ch = serialLineBuffer[i];
+            if (ch == '"') Serial.print('\\');
+            Serial.print(ch);
+          }
+          Serial.println(F("\"}"));
           handleIncomingJson(serialLineBuffer);
         }
         serialLineLength = 0;
@@ -760,7 +1017,7 @@ void readSerialCommands()
       }
       else
       {
-        // Drop oversized malformed lines and wait for the next newline.
+        Serial.println(F("{\"type\":\"debug\",\"msg\":\"line_overflow_dropped\"}"));
         serialLineLength = 0;
       }
     }
@@ -768,46 +1025,23 @@ void readSerialCommands()
 }
 
 // ==============================
-// Path execution state machine
+// Arc-segment path controller
 // ==============================
-void updateActivePrimitive()
+void updatePathController()
 {
-  if (active_primitive == PRIM_NONE)
+  if (!path_loaded || path_paused)
     return;
 
-  updateOdometry();
-
-  if (!motorsBusy())
+  // While motors are still executing an arc, just update odometry
+  if (path_running && motorsBusy())
   {
-    if (active_primitive == PRIM_DRIVE)
-    {
-      sendWaypointReached();
-      current_waypoint_index++;
-    }
-
-    active_primitive = PRIM_NONE;
-
-    if (path_paused)
-    {
-      setRobotState("paused");
-    }
-    else
-    {
-      setRobotState("idle");
-    }
-
-    printPoseJSON();
+    updateOdometry();
+    return;
   }
-}
 
-void maybeStartNextPrimitive()
-{
-  if (!path_loaded)
-    return;
-  if (path_paused)
-    return;
-  if (active_primitive != PRIM_NONE)
-    return;
+  // Arc segment finished — update odometry and plan next segment
+  if (path_running)
+    updateOdometry();
 
   if (!path_started_sent)
   {
@@ -815,8 +1049,21 @@ void maybeStartNextPrimitive()
     path_started_sent = true;
   }
 
+  // Advance past reached waypoints
+  while (current_waypoint_index >= 0 && current_waypoint_index < waypoint_count)
+  {
+    float dist = distanceToWaypoint((float)waypoint_xs[current_waypoint_index],
+                                    (float)waypoint_ys[current_waypoint_index]);
+    if (dist > POSITION_TOLERANCE_CM)
+      break;
+    sendWaypointReached();
+    current_waypoint_index++;
+  }
+
+  // Path complete?
   if (current_waypoint_index < 0 || current_waypoint_index >= waypoint_count)
   {
+    stopMotorsNow();
     sendPathComplete();
     clearCurrentPath();
     setRobotState("idle");
@@ -824,37 +1071,13 @@ void maybeStartNextPrimitive()
     return;
   }
 
+  // Start next arc segment toward current waypoint
   float target_x = (float)waypoint_xs[current_waypoint_index];
   float target_y = (float)waypoint_ys[current_waypoint_index];
-
   float dist = distanceToWaypoint(target_x, target_y);
 
-  if (dist <= POSITION_TOLERANCE_CM)
-  {
-    sendWaypointReached();
-    current_waypoint_index++;
-
-    if (current_waypoint_index >= waypoint_count)
-    {
-      sendPathComplete();
-      clearCurrentPath();
-      setRobotState("idle");
-      printPoseJSON();
-    }
-    return;
-  }
-
-  float target_heading = headingToWaypointRad(target_x, target_y);
-  float heading_err_deg = headingErrorDeg(target_heading);
-
-  if (fabs(heading_err_deg) > HEADING_TOLERANCE_DEG)
-  {
-    startTurnInPlace(heading_err_deg);
-  }
-  else
-  {
-    startDriveStraight(dist);
-  }
+  // Use shorter arc segments for course correction (max 15cm per segment)
+  startArcToward(target_x, target_y, 15.0);
 }
 
 // ==============================
@@ -862,7 +1085,24 @@ void maybeStartNextPrimitive()
 // ==============================
 void setup()
 {
-  prizm.PrizmBegin();
+  Wire.begin();
+  delay(500);
+  // Reset all I2C motor/servo controllers (addresses 1-6)
+  for (int addr = 1; addr <= 6; addr++) {
+    Wire.beginTransmission(addr);
+    Wire.write(0x27);
+    Wire.endTransmission();
+    delay(10);
+  }
+  delay(1000);
+  // Enable all controllers (skip button wait from PrizmBegin)
+  for (int addr = 1; addr <= 6; addr++) {
+    Wire.beginTransmission(addr);
+    Wire.write(0x25);
+    Wire.endTransmission();
+    delay(10);
+  }
+  prizm_ready = true;
   Serial.begin(115200);
   prizm.setServoSpeed(GRIPPER_SERVO_ID, GRIPPER_SERVO_SPEED_PERCENT);
   prizm.setServoPosition(GRIPPER_SERVO_ID, GRIPPER_OPEN_DEG);
@@ -874,21 +1114,13 @@ void setup()
 
 void loop()
 {
-  // 1. Read commands from laptop
-  readSerialCommands();
   readSerialCommands();
 
-  // 2. Update ongoing motion / odometry
-  updateActivePrimitive();
+  updatePathController();
+
   readSerialCommands();
 
-  // 3. Start next primitive if needed
-  maybeStartNextPrimitive();
-  readSerialCommands();
-
-  // 4. Refresh sensors only when the serial input is quiet
   maybeUpdateSensors();
-
-  // 5. Periodic telemetry
+  updateSpeedAndStall();
   maybeSendTelemetry();
 }

@@ -1,0 +1,1100 @@
+/* ===== Layout — map is full screen ===== */
+.app-layout {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #0a0a0a;
+}
+
+.arena-fullscreen {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+/* ===== Glassmorphism base ===== */
+.glass {
+  background: rgba(15, 15, 20, 0.45);
+  backdrop-filter: blur(32px) saturate(1.6);
+  -webkit-backdrop-filter: blur(32px) saturate(1.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.05);
+}
+
+/* ===== Sidebar overlay ===== */
+.sidebar-overlay {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  bottom: 16px;
+  width: 300px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+  overflow-y: auto;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+}
+
+.sidebar-overlay.collapsed {
+  transform: translateX(calc(-100% - 32px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ===== Bottom overlay ===== */
+.bottom-overlay {
+  position: absolute;
+  bottom: 16px;
+  left: 340px;
+  right: 16px;
+  z-index: 20;
+  padding: 20px;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+}
+
+.bottom-overlay.collapsed {
+  transform: translateY(calc(100% + 32px));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.bottom-overlay.sidebar-gone {
+  left: 16px;
+}
+
+/* ===== Toggle buttons ===== */
+.panel-toggle {
+  position: absolute;
+  z-index: 25;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(15, 15, 20, 0.45);
+  backdrop-filter: blur(32px) saturate(1.6);
+  -webkit-backdrop-filter: blur(32px) saturate(1.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.2s, color 0.2s;
+}
+
+.panel-toggle:hover {
+  background: rgba(30, 30, 38, 0.55);
+  color: #fff;
+}
+
+.toggle-sidebar {
+  top: 20px;
+  left: 20px;
+}
+
+.toggle-sidebar.shifted {
+  left: 332px;
+}
+
+.toggle-bottom {
+  bottom: 20px;
+  right: 20px;
+}
+
+/* ===== Sidebar content ===== */
+.sidebar-header {
+  text-align: center;
+  padding-bottom: 4px;
+}
+
+.sidebar-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: #fff;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot-connected {
+  background: #34d399;
+  box-shadow: 0 0 6px rgba(52, 211, 153, 0.5);
+}
+
+.dot-disconnected {
+  background: #f87171;
+  box-shadow: 0 0 6px rgba(248, 113, 113, 0.5);
+}
+
+/* ===== Cards ===== */
+.card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 0;
+  padding: 14px;
+}
+
+.card-title {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin: 0 0 10px;
+}
+
+/* ===== Robot List ===== */
+.robot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.robot-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 0;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s;
+}
+
+.robot-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.robot-item-selected {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.robot-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.robot-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+}
+
+.robot-state {
+  font-size: 11px;
+  font-weight: 500;
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+}
+
+.no-robots {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.3);
+  text-align: center;
+  padding: 8px;
+}
+
+/* ===== Info Grid ===== */
+.info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.info-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.info-value {
+  font-size: 12px;
+  font-weight: 500;
+  color: #e8e8e8;
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+}
+
+/* ===== Control Buttons ===== */
+.control-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.quick-paths {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* ===== Buttons ===== */
+.btn {
+  padding: 7px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.6);
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.btn-primary,
+.btn-success,
+.btn-secondary,
+.btn-outline {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.6);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.btn-danger {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(248, 113, 113, 0.8);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.btn-danger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.25);
+  color: #fca5a5;
+}
+
+.btn-calibrate {
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(251, 191, 36, 0.8);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.btn-calibrate:hover:not(:disabled) {
+  background: rgba(251, 191, 36, 0.08);
+  border-color: rgba(251, 191, 36, 0.2);
+  color: #fcd34d;
+}
+
+.btn-mode-active {
+  background: rgba(165, 180, 252, 0.15);
+  color: #a5b4fc;
+  border-color: rgba(165, 180, 252, 0.3);
+}
+
+/* ===== Item Lists (obstacles, action stops) ===== */
+.item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.item-icon {
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+.item-label {
+  flex: 1;
+  color: rgba(255, 255, 255, 0.6);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-go {
+  background: none;
+  border: 1px solid rgba(34, 211, 238, 0.3);
+  color: #22d3ee;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 0;
+  transition: all 0.15s;
+}
+.btn-go:hover {
+  background: rgba(34, 211, 238, 0.1);
+  border-color: rgba(34, 211, 238, 0.5);
+}
+
+/* ===== View Toggle ===== */
+.view-toggle {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 25;
+  display: flex;
+  border-radius: 0;
+  overflow: hidden;
+  background: rgba(15, 15, 20, 0.45);
+  backdrop-filter: blur(32px) saturate(1.6);
+  -webkit-backdrop-filter: blur(32px) saturate(1.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.view-toggle-btn {
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Inter', -apple-system, system-ui, sans-serif;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.4);
+  transition: all 0.15s ease;
+}
+
+.view-toggle-btn:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.view-toggle-active {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.view-toggle-active:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* ===== Arena ===== */
+.arena-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.arena-canvas {
+  cursor: crosshair;
+}
+
+.arena-mouse-pos {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(15, 15, 20, 0.45);
+  backdrop-filter: blur(32px) saturate(1.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 3px 10px;
+  border-radius: 0;
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+  pointer-events: none;
+}
+
+/* ===== Bottom Panel content ===== */
+.bottom-card {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.hint-text {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  margin-bottom: 8px;
+}
+
+.waypoint-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 80px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+}
+
+.waypoint-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 0;
+  font-size: 12px;
+}
+
+.waypoint-index {
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 500;
+  width: 20px;
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+}
+
+.waypoint-coords {
+  flex: 1;
+  color: #e8e8e8;
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+}
+
+.btn-remove {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 4px;
+  transition: color 0.15s;
+}
+.btn-remove:hover {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.speed-inputs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.speed-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.speed-field label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.speed-field input,
+.coord-goals input {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e8e8e8;
+  padding: 6px 10px;
+  border-radius: 0;
+  font-size: 13px;
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+
+.speed-field input:focus,
+.coord-goals input:focus {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.path-actions {
+  display: flex;
+  gap: 8px;
+}
+.path-actions .btn {
+  flex: 1;
+}
+
+.coord-section {
+  margin-bottom: 10px;
+}
+
+.coord-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.coord-select {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e8e8e8;
+  padding: 6px 10px;
+  border-radius: 0;
+  font-size: 13px;
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+  outline: none;
+  margin-bottom: 6px;
+  transition: border-color 0.15s;
+}
+
+.coord-select:focus {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.coord-goals {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.coord-goals label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+
+.coord-goals input {
+  width: 60px;
+}
+
+.coord-select option {
+  background: #1a1a1e;
+  color: #e8e8e8;
+}
+
+/* ===== Action Wheel ===== */
+.aw-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.aw-svg {
+  position: fixed;
+  pointer-events: none;
+  transform: scale(0);
+  opacity: 0;
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.12s;
+}
+
+.aw-svg.aw-in {
+  transform: scale(1);
+  opacity: 1;
+}
+
+.aw-svg path {
+  pointer-events: auto;
+}
+
+/* ===== Cross Mode Banner ===== */
+.cross-mode-banner {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  padding: 8px 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fbbf24;
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ===== Clear Crossing Button ===== */
+.btn-clear-crossing {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  padding: 8px 20px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  transition: background 0.15s, border-color 0.15s;
+  font-family: 'Inter', system-ui, sans-serif;
+  white-space: nowrap;
+}
+
+.btn-clear-crossing:hover {
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.5);
+}
+
+/* ===== Task Builder ===== */
+.task-builder {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.task-name-input {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e8e8e8;
+  padding: 6px 10px;
+  border-radius: 0;
+  font-size: 13px;
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+.task-name-input:focus {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.task-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.task-step-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 12px;
+}
+
+.task-step-icon {
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.task-step-label {
+  flex: 1;
+  color: rgba(255, 255, 255, 0.7);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-step-move {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+  transition: color 0.15s;
+}
+.btn-step-move:hover:not(:disabled) {
+  color: rgba(255, 255, 255, 0.6);
+}
+.btn-step-move:disabled {
+  opacity: 0.2;
+  cursor: default;
+}
+
+.add-step-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.step-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.step-pick-btn {
+  text-align: left;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+.recurring-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.recurring-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+
+.recurring-select {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #e8e8e8;
+  padding: 4px 8px;
+  border-radius: 0;
+  font-size: 12px;
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+  outline: none;
+}
+.recurring-select option {
+  background: #1a1a1e;
+  color: #e8e8e8;
+}
+
+/* ===== Task List ===== */
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.task-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 10px;
+}
+
+.task-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.task-card-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: #e8e8e8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  margin-right: 8px;
+}
+
+.task-status-badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border: 1px solid;
+  flex-shrink: 0;
+}
+
+.task-meta {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+}
+
+.task-progress {
+  height: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 6px 0;
+}
+
+.task-progress-fill {
+  height: 100%;
+  transition: width 0.3s;
+}
+
+.task-steps-mini {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.task-step-dot {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.25);
+  padding: 1px 3px;
+}
+
+.task-step-current {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.1);
+}
+
+.task-step-done {
+  color: rgba(52, 211, 153, 0.6);
+}
+
+.task-error {
+  font-size: 11px;
+  color: #f87171;
+  margin-bottom: 4px;
+}
+
+.task-actions {
+  display: flex;
+  gap: 4px;
+}
+.task-actions .btn {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+/* ===== Arena Tooltips ===== */
+.arena-tooltip {
+  position: fixed;
+  z-index: 50;
+  background: rgba(15, 15, 20, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 8px 10px;
+  min-width: 160px;
+  max-width: 220px;
+  font-size: 11px;
+  pointer-events: auto;
+  cursor: default;
+}
+
+.tt-title {
+  font-weight: 600;
+  color: #fff;
+  font-size: 12px;
+  margin-bottom: 4px;
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+}
+
+.tt-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 1px 0;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.tt-row span:last-child {
+  color: #e8e8e8;
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+  font-size: 11px;
+}
+
+.tt-empty {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.tt-queue-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 11px;
+}
+
+.tt-queue-pos {
+  color: #22d3ee;
+  font-weight: 600;
+  width: 20px;
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+}
+
+.tt-queue-robot {
+  flex: 1;
+  color: #e8e8e8;
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+}
+
+.tt-queue-eta {
+  color: rgba(255, 255, 255, 0.4);
+  font-family: 'IBM Plex Mono', 'SF Mono', monospace;
+}
+
+/* ===== Mobile — sidebar becomes bottom sheet, bottom panel goes full-width ===== */
+@media (max-width: 768px) {
+
+  /* Use dvh for real viewport height on iOS */
+  .app-layout {
+    height: 100dvh;
+  }
+
+  /* Sidebar becomes a bottom sheet — safe-area on all edges */
+  .sidebar-overlay {
+    top: auto;
+    left: calc(8px + env(safe-area-inset-left));
+    right: calc(8px + env(safe-area-inset-right));
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    width: auto;
+    max-height: 50vh;
+    padding: 16px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    gap: 8px;
+  }
+
+  .sidebar-overlay.collapsed {
+    transform: translateY(calc(100% + 16px + env(safe-area-inset-bottom)));
+  }
+
+  /* Bottom panel full-width with safe-area */
+  .bottom-overlay {
+    left: calc(8px + env(safe-area-inset-left));
+    right: calc(8px + env(safe-area-inset-right));
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    padding: 16px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .bottom-overlay.sidebar-gone {
+    left: calc(8px + env(safe-area-inset-left));
+  }
+
+  .bottom-overlay.collapsed {
+    transform: translateY(calc(100% + 16px + env(safe-area-inset-bottom)));
+  }
+
+  /* Toggle buttons — larger touch targets, safe-area aware */
+  .panel-toggle {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
+
+  .toggle-sidebar {
+    top: auto;
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    left: calc(12px + env(safe-area-inset-left));
+  }
+
+  .toggle-sidebar.shifted {
+    left: calc(12px + env(safe-area-inset-left));
+    bottom: calc(50vh + 28px + env(safe-area-inset-bottom));
+  }
+
+  .toggle-bottom {
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    right: calc(12px + env(safe-area-inset-right));
+  }
+
+  /* View toggle — safe-area top for Dynamic Island / notch */
+  .view-toggle {
+    top: calc(12px + env(safe-area-inset-top));
+    right: calc(12px + env(safe-area-inset-right));
+  }
+
+  .view-toggle-btn {
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+
+  /* Cross mode banner — below notch */
+  .cross-mode-banner,
+  .btn-clear-crossing {
+    top: calc(16px + env(safe-area-inset-top));
+  }
+
+  /* Buttons — taller for touch */
+  .btn {
+    padding: 10px 14px;
+    font-size: 13px;
+    min-height: 44px;
+  }
+
+  /* Inputs — taller for touch, 16px prevents iOS zoom */
+  .speed-field input,
+  .coord-goals input,
+  .coord-select {
+    padding: 10px 12px;
+    font-size: 16px;
+  }
+
+  /* Robot items — taller for touch */
+  .robot-item {
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+
+  /* Info grid — slightly more spacing */
+  .info-row {
+    padding: 3px 0;
+  }
+
+  /* Title smaller on mobile */
+  .sidebar-title {
+    font-size: 13px;
+    letter-spacing: 2px;
+  }
+
+  /* Mouse pos tooltip */
+  .arena-mouse-pos {
+    bottom: calc(64px + env(safe-area-inset-bottom));
+    right: auto;
+    left: calc(12px + env(safe-area-inset-left));
+  }
+}
+
+/* ===== Extra small phones ===== */
+@media (max-width: 400px) {
+  .sidebar-overlay {
+    left: calc(4px + env(safe-area-inset-left));
+    right: calc(4px + env(safe-area-inset-right));
+    bottom: calc(4px + env(safe-area-inset-bottom));
+    padding: 12px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    max-height: 55vh;
+  }
+
+  .bottom-overlay {
+    left: calc(4px + env(safe-area-inset-left));
+    right: calc(4px + env(safe-area-inset-right));
+    bottom: calc(4px + env(safe-area-inset-bottom));
+    padding: 12px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .card {
+    padding: 10px;
+  }
+
+  .view-toggle-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+}
